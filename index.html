@@ -2,85 +2,326 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MILVEXA (MVXA) | Official Website</title>
-  <style>
-    body {
-      margin: 0;
-      background: #090b18;
-      color: white;
-      font-family: Arial, sans-serif;
-      text-align: center;
-    }
-    main { max-width: 850px; margin: auto; padding: 65px 20px; }
-    h1 { font-size: 56px; color: #9b8cff; margin-bottom: 10px; }
-    h2 { color: #b8afff; margin-top: 45px; }
-    p { line-height: 1.7; color: #d3d5e3; }
-    .button {
-      display: inline-block;
-      background: #806bff;
-      color: white;
-      padding: 15px 25px;
-      margin: 12px;
-      border-radius: 12px;
-      text-decoration: none;
-      font-weight: bold;
-    }
-    .address { overflow-wrap: anywhere; font-size: 13px; }
-    footer { margin-top: 65px; color: #999; font-size: 13px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="MILVEXA (MVXA) — a community-driven Solana meme token exploring future utility.">
+<title>MILVEXA | Born as a Meme. Built for More.</title>
+<style>
+:root {
+  --bg: #070813;
+  --purple: #a678ff;
+  --blue: #36d5ff;
+  --text: #e9e9ff;
+  --muted: #a7accb;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 15% 15%, #5722a455, transparent 42%),
+    radial-gradient(ellipse at 85% 35%, #087bb744, transparent 42%),
+    radial-gradient(ellipse at 50% 90%, #541b8440, transparent 48%);
+}
+nav {
+  max-width: 1150px;
+  margin: auto;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+.brand {
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: white;
+  text-decoration: none;
+}
+nav a { color: #d6d7f0; text-decoration: none; }
+.navlinks { display: flex; gap: 22px; font-size: 14px; }
+.hero {
+  min-height: 78vh;
+  padding: 65px 20px 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.logo {
+  width: 155px;
+  height: 155px;
+  object-fit: contain;
+  border-radius: 50%;
+  box-shadow: 0 0 65px #884aff66;
+  margin-bottom: 28px;
+}
+.tag {
+  color: var(--blue);
+  letter-spacing: 3px;
+  font-size: 12px;
+  font-weight: bold;
+}
+h1 {
+  font-size: clamp(56px, 11vw, 112px);
+  letter-spacing: -4px;
+  margin: 16px 0 5px;
+  background: linear-gradient(100deg, #fff, #b47bff, #46dfff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 70px #8d46ff33;
+}
+.subtitle {
+  font-size: clamp(22px, 4vw, 36px);
+  font-weight: 800;
+  margin: 12px 0;
+}
+.intro {
+  max-width: 650px;
+  color: var(--muted);
+  line-height: 1.8;
+  font-size: 17px;
+}
+.buttons {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 25px;
+}
+.btn {
+  display: inline-block;
+  padding: 16px 25px;
+  border-radius: 12px;
+  font-weight: bold;
+  text-decoration: none;
+  transition: transform .2s, box-shadow .2s;
+}
+.btn:hover { transform: translateY(-3px); }
+.primary {
+  background: linear-gradient(120deg, #8655ff, #347aff);
+  color: white;
+  box-shadow: 0 8px 35px #764aff55;
+}
+.secondary {
+  color: white;
+  border: 1px solid #7777b0;
+  background: #ffffff0a;
+}
+section {
+  max-width: 1100px;
+  margin: auto;
+  padding: 75px 24px;
+}
+.section-title {
+  font-size: clamp(30px, 5vw, 46px);
+  margin: 0 0 18px;
+  text-align: center;
+}
+.section-desc {
+  color: var(--muted);
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 35px;
+  line-height: 1.8;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.card {
+  background: linear-gradient(145deg, #19152e, #101525);
+  border: 1px solid #ffffff1c;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 15px 40px #00000025;
+}
+.card h3 { color: #c9a8ff; }
+.card p { color: var(--muted); line-height: 1.7; }
+.number {
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: bold;
+}
+.contract {
+  overflow-wrap: anywhere;
+  padding: 18px;
+  background: #0c1123;
+  border: 1px solid #54527c;
+  border-radius: 12px;
+  color: #bcdcff;
+  font-family: monospace;
+  font-size: 13px;
+  text-align: center;
+}
+.warning {
+  border: 1px solid #9d8250;
+  background: #29211470;
+  padding: 22px;
+  border-radius: 16px;
+  color: #e5d3af;
+  line-height: 1.8;
+}
+footer {
+  padding: 35px 20px;
+  border-top: 1px solid #ffffff18;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .navlinks { display: none; }
+  .grid { grid-template-columns: 1fr; }
+  h1 { letter-spacing: -2px; }
+  section { padding: 55px 20px; }
+}
+</style>
 </head>
 <body>
-  <main>
-    <h1>MILVEXA</h1>
-    <h2>Born as a Meme. Built for More.</h2>
-    <p>
-      MILVEXA (MVXA) is a community-focused meme token
-      on Solana, with plans to explore real utility.
-    </p>
 
-    <a class="button"
-       href="https://jup.ag/swap?buy=HFieYSpfrHPTGS1t2r7JHQ87PiJFoNBDzPscmwfrUm1C"
+<nav>
+  <a class="brand" href="#">✦ MILVEXA</a>
+  <div class="navlinks">
+    <a href="#about">About</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#token">Token</a>
+    <a href="#risks">Risks</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <img class="logo"
+       src="https://raw.githubusercontent.com/p0s3rk0t0/milvexa-assets/main/milvexa-logo.png"
+       alt="MILVEXA logo">
+
+  <div class="tag">SOLANA • COMMUNITY • FUTURE UTILITY</div>
+  <h1>MILVEXA</h1>
+  <div class="subtitle">Born as a Meme. Built for More.</div>
+
+  <p class="intro">
+    A community-driven Solana meme token with ambitions
+    beyond the meme. Creativity today. Exploration tomorrow.
+    Real utility is a goal, not a promise.
+  </p>
+
+  <div class="buttons">
+    <a class="btn primary"
+       href="https://jup.ag/swap?buy=HFieYSpfrHPTGS1t2r7JHQ87PiJFoNBDzPscmwfrUm1C&amp;sell=So11111111111111111111111111111111111111112"
        target="_blank" rel="noopener noreferrer">
-      Explore on Jupiter
+       Explore MVXA on Jupiter ↗
     </a>
+    <a class="btn secondary"
+       href="https://www.meteora.ag/dammv2/DQ6LjCTtZWxCphuJb2iwPqubinxFxNncvWKUQF1UQWw1"
+       target="_blank" rel="noopener noreferrer">
+       View Liquidity Pool ↗
+    </a>
+  </div>
+</header>
 
-    <h2>Our Vision</h2>
-    <p>
-      We start with memes, creativity and community.
-      Our long-term goal is to explore useful tools
-      for people discovering the Solana ecosystem.
-    </p>
+<section id="about">
+  <h2 class="section-title">More Than a Meme?</h2>
+  <p class="section-desc">
+    MILVEXA begins with culture, humor and community.
+    We aim to explore useful Solana tools as the project grows.
+  </p>
+  <div class="grid">
+    <div class="card">
+      <div class="number">01 / CULTURE</div>
+      <h3>Meme Energy</h3>
+      <p>Creativity, identity and fun at the heart of MILVEXA.</p>
+    </div>
+    <div class="card">
+      <div class="number">02 / PEOPLE</div>
+      <h3>Community First</h3>
+      <p>Open discussions, ideas and transparent updates.</p>
+    </div>
+    <div class="card">
+      <div class="number">03 / BUILD</div>
+      <h3>Future Utility</h3>
+      <p>Exploring MILVEXA Hub, a possible resource for Solana beginners.</p>
+    </div>
+  </div>
+</section>
 
-    <h2>Roadmap</h2>
-    <p>
-      Phase 1: Website and community<br>
-      Phase 2: Transparency and community growth<br>
-      Phase 3: Explore MILVEXA Hub<br>
-      Phase 4: Evaluate future token utility
-    </p>
+<section id="roadmap">
+  <h2 class="section-title">The Road Ahead</h2>
+  <p class="section-desc">
+    An exploratory roadmap. Dates and features are not guaranteed.
+  </p>
+  <div class="grid">
+    <div class="card">
+      <div class="number">PHASE 01</div>
+      <h3>Launch</h3>
+      <p>Token creation, initial liquidity and official website.</p>
+    </div>
+    <div class="card">
+      <div class="number">PHASE 02</div>
+      <h3>Community</h3>
+      <p>Build communication channels and publish transparent updates.</p>
+    </div>
+    <div class="card">
+      <div class="number">PHASE 03</div>
+      <h3>MILVEXA Hub</h3>
+      <p>Explore a free educational website for Solana newcomers.</p>
+    </div>
+  </div>
+</section>
 
-    <h2>Token Information</h2>
-    <p>Network: Solana</p>
-    <p>Symbol: MVXA</p>
-    <p>Total Supply: 100,000,000 MVXA</p>
-    <p class="address">
-      Mint: HFieYSpfrHPTGS1t2r7JHQ87PiJFoNBDzPscmwfrUm1C
-    </p>
+<section id="token">
+  <h2 class="section-title">Token Details</h2>
+  <p class="section-desc">
+    Verify the mint address before interacting with MVXA.
+  </p>
+  <div class="grid">
+    <div class="card">
+      <div class="number">NETWORK</div>
+      <h3>Solana</h3>
+    </div>
+    <div class="card">
+      <div class="number">SYMBOL</div>
+      <h3>MVXA</h3>
+    </div>
+    <div class="card">
+      <div class="number">TOTAL SUPPLY</div>
+      <h3>100,000,000</h3>
+    </div>
+  </div>
+  <h3 style="text-align:center;margin-top:38px">Official Mint Address</h3>
+  <div class="contract">
+    HFieYSpfrHPTGS1t2r7JHQ87PiJFoNBDzPscmwfrUm1C
+  </div>
+</section>
 
-    <h2>Transparency & Risks</h2>
-    <p>
-      Approximately 99% of the token supply is held
-      in the creator-controlled wallet.
-      Liquidity is currently very limited.
-      MVXA is speculative and may lose its entire value.
-      Future utility is planned, not guaranteed.
-    </p>
+<section id="risks">
+  <h2 class="section-title">Transparency Matters</h2>
+  <div class="warning">
+    MVXA is a speculative meme token with substantial risk.
+    Approximately 99% of the supply is currently held in a
+    creator-controlled wallet. The liquidity pool is very small,
+    which can lead to extreme price changes and slippage.
+    Future utility is exploratory and may never be delivered.
+    There are no guaranteed returns. Only participate if you
+    understand the risks and can afford a complete loss.
+  </div>
+</section>
 
-    <footer>
-      MILVEXA 2026 | Community-driven on Solana
-    </footer>
-  </main>
+<footer>
+  © 2026 MILVEXA • Built on Solana • Community & Creativity
+</footer>
+
 </body>
 </html>
