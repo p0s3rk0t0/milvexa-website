@@ -73,7 +73,35 @@ if(typeof location!=='undefined' && typeof history!=='undefined'){
  }
 }
 
-function parseReceipt(text){const r={operator:'',receipt:'',date:'',kwh:'',amount:'',currency:''},t=text.replace(/\r/g,'');for(const [re,n]of [[/eldrive/i,'Eldrive'],[/fines|финес/i,'Fines Charging'],[/electrip/i,'electrip'],[/evpoint/i,'EVPoint'],[/demo charge|демо заряд/i,'Demo Charge']])if(re.test(t)){r.operator=n;break}const number=n=>n.replace(/\s/g,'').replace(',','.');let m=t.match(/(\d+(?:[.,]\d+)?)\s*(?:kwh|kW\s*h|квт\.?\s*ч)/i);if(m)r.kwh=number(m[1]);m=t.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);let y,mo,d;if(m)[,y,mo,d]=m;else{m=t.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);if(m)[,d,mo,y]=m}if(y){const dt=new Date(Date.UTC(+y,+mo-1,+d));if(dt.getUTCFullYear()===+y&&dt.getUTCMonth()===+mo-1&&dt.getUTCDate()===+d)r.date=`${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`}for(const l of t.split('\n').filter(l=>/total|amount paid|общ[ао].*сума|сума за плащане|платено/i.test(l))){const currency=/EUR|€|евро/i.test(l)?'EUR':/BGN|лв/i.test(l)?'BGN':'';if(!currency)continue;const nums=l.match(/\d+[.,]\d{2}\b/g);if(nums){r.amount=number(nums[nums.length-1]);r.currency=currency;break}}m=t.match(/(?:receipt|invoice|session|document|фактура|документ|сесия)\s*(?:no\.?|number|номер|№|#|id)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})/i);if(m)r.receipt=m[1];else{m=t.match(/^\s*(\d{5,12})\s+\d{1,2}[-/.]\d{1,2}[-/.]20\d{2}/m);if(m)r.receipt=m[1]}return r}
+function parseReceipt(text){
+ const r={operator:'',receipt:'',date:'',kwh:'',amount:'',currency:''},t=String(text).replace(/\r/g,'');
+ const providers=[[/eldrive/i,'Eldrive'],[/fines|финес/i,'Fines Charging'],[/electrip/i,'electrip'],[/evpoint/i,'EVPoint'],[/demo charge|демо заряд/i,'Demo Charge'],[/chargepoint/i,'ChargePoint'],[/electrify america/i,'Electrify America'],[/\btesla\b/i,'Tesla'],[/\bionity\b/i,'IONITY'],[/\bevgo\b/i,'EVgo'],[/bp\s*pulse/i,'bp pulse'],[/shell recharge/i,'Shell Recharge']];
+ for(const [re,name] of providers)if(re.test(t)){r.operator=name;break;}
+ const currencyOf=s=>{const found=[];for(const [re,c] of [[/\bEUR\b|€|евро/i,'EUR'],[/\bBGN\b|лв\.?/i,'BGN'],[/\bUSD\b|US\s*\$/i,'USD'],[/\bGBP\b|£/i,'GBP']])if(re.test(s))found.push(c);return found.length===1?found[0]:'';};
+ const number=s=>{let n=s.replace(/[\s\u00a0\u202f]/g,'');if(n.includes(',')&&n.includes('.')){const decimal=n.lastIndexOf(',')>n.lastIndexOf('.')?',':'.';n=n.replace(decimal===','?/\./g:/,/g,'').replace(',','.');}else n=n.replace(',','.');return n;};
+ let m=t.match(/(\d+(?:[.,]\d+)?)\s*(?:kwh|kW\s*h|квт\.?\s*ч)/i);if(m)r.kwh=number(m[1]);
+ const date=(y,mo,d)=>{const dt=new Date(Date.UTC(+y,+mo-1,+d));return dt.getUTCFullYear()===+y&&dt.getUTCMonth()===+mo-1&&dt.getUTCDate()===+d?`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`:'';};
+ m=t.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+ if(m)r.date=date(m[1],m[2],m[3]);
+ else{
+  m=t.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);
+  if(m){const a=+m[1],b=+m[2];if(a>12&&b<=12)r.date=date(m[3],b,a);else if(b>12&&a<=12)r.date=date(m[3],a,b);else if(a===b)r.date=date(m[3],a,b);}
+  else{
+   const monthNames='Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+   const months=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+   m=t.match(new RegExp('\\b('+monthNames+')\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?[,]?\\s+(20\\d{2})\\b','i'));
+   if(m)r.date=date(m[3],months.indexOf(m[1].slice(0,3).toLowerCase())+1,m[2]);
+   else{m=t.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+('+monthNames+')\\.?[,]?\\s+(20\\d{2})\\b','i'));if(m)r.date=date(m[3],months.indexOf(m[2].slice(0,3).toLowerCase())+1,m[1]);}
+  }
+ }
+ const totals=t.split('\n').filter(l=>/\btotal\b|amount paid|amount charged|общ[ао].*сума|сума за плащане|платено/i.test(l)&&!/\bsub\s*total\b|\bsubtotal\b|\btotal\s+(?:tax|vat|energy|kwh)\b/i.test(l));
+ for(const line of totals){if(/refund|credit note|възстанов|(?:^|\s)-\s*[$€£]?\s*\d/i.test(line))continue;const values=line.match(/(?:\d{1,3}(?:[,.\s\u00a0\u202f]\d{3})+|\d+)[.,]\d{2}\b/g);if(!values)continue;const n=number(values[values.length-1]);if(!Number.isFinite(+n)||+n<=0)continue;r.amount=n;r.currency=currencyOf(line)||currencyOf(t);break;}
+ // A bare dollar symbol is ambiguous (USD/CAD/AUD/etc.); require an explicit currency selection.
+ m=t.match(/(?:receipt|invoice|session|document|фактура|документ|сесия)\s*(?:no\.?|number|номер|№|#|id)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})/i);
+ if(m&&/\d/.test(m[1]))r.receipt=m[1];else{m=t.match(/^\s*(\d{5,12})\s+\d{1,2}[-/.]\d{1,2}[-/.]20\d{2}/m);if(m)r.receipt=m[1];}
+ return r;
+}
+
 
 let ocrBusy=false,receiptReady=false,ocrVersion=0,ocrWorker=null,receiptPreviewUrl=null,ocrLibrary;
 const receiptKeys=['provider','receipt','date','amount','currency'];
