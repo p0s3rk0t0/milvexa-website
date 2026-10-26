@@ -1,8 +1,8 @@
 'use strict';
 const $=id=>document.getElementById(id),cfg=window.MILVEXA_PILOT||{},MINT='HFieYSpfrHPTGS1t2r7JHQ87PiJFoNBDzPscmwfrUm1C';
-let session=null,reviewer=false,claims=[],objectUrl;
+let session=null,reviewer=false,claims=[],withdrawals=[],minWithdrawal=300,accumulationReady=false,objectUrl;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const labels={pending:'Awaiting review',needs_info:'More information needed — contact the pilot team',rejected:'Rejected',approved:'Approved · not paid',payout_pending:'Payout reserved · manual transfer pending',transfer_recorded:'Transfer recorded · verification pending',paid:'Paid · manually verified by reviewer'};
+const labels={pending:'Awaiting review',needs_info:'More information needed — contact the pilot team',rejected:'Rejected',approved:'Approved · reward accrued',payout_pending:'Payout reserved · manual transfer pending',transfer_recorded:'Transfer recorded · verification pending',paid:'Paid · manually verified by reviewer'};
 function message(s){$('message').textContent=s;}
 async function api(path,body,method){
  const response=await fetch(cfg.url+path,{method:method||(body?'POST':'GET'),headers:{apikey:cfg.key,...(session?.access_token?{Authorization:'Bearer '+session.access_token}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
@@ -13,13 +13,18 @@ function validWallet(s){if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s))return false
 async function load(){
  const [settings,role,rows]=await Promise.all([api('/rest/v1/pilot_settings?select=*'),api('/rest/v1/rpc/pilot_is_reviewer',{}),api('/rest/v1/pilot_claims?select=*&order=created_at.desc')]);
  reviewer=role===true;claims=rows;const s=settings[0];if(!s)throw Error('Pilot settings are missing');
- $('terms').textContent=`${s.accepting?'Pilot open':'Pilot paused'} · Fixed reward: ${s.reward} MVXA per approved receipt. Maximum ${s.max_claims} claims. Token market value can change; approval does not mean payment has been sent.`;
- $('submit-panel').hidden=reviewer||!s.accepting;$('claims-title').textContent=reviewer?'Review queue':'My claims';$('identity').textContent=session.user.email;$('app').hidden=false;$('login').hidden=true;
- $('claims').innerHTML=rows.length?rows.map(c=>`<article class="card" data-id="${esc(c.id)}"><div class="row"><div><h2>${esc(c.provider)}</h2><p>${esc(labels[c.status])}</p><p>${esc(c.receipt_date)} · ${esc(c.receipt_number)}<br>${esc(c.amount)} ${esc(c.currency)}</p><p><strong>${esc(c.reward)} MVXA</strong> · ${c.status==='paid'?'Payment verified manually':'Not marked paid'}</p><p class="address">Recipient: ${esc(c.wallet)}</p><button data-action="image" class="secondary">View receipt</button></div><div><p class="address">Claim: ${esc(c.id)}</p>${c.note?`<p>${esc(c.note)}</p>`:''}${c.signature?`<p><a target="_blank" rel="noopener noreferrer" href="https://explorer.solana.com/tx/${encodeURIComponent(c.signature)}">View recorded transaction</a></p>`:''}${reviewer?actions(c):''}</div></div><details><summary>Claim history</summary><div class="events"></div><button data-action="history" class="secondary">Load history</button></details></article>`).join(''):'<p class="card">No claims yet.</p>';
+ accumulationReady=s.min_withdrawal!==undefined;
+ if(!accumulationReady){$('app').hidden=true;$('login').hidden=false;throw Error('The reward balance upgrade is awaiting database setup. Please contact the MILVEXA team.');}
+ minWithdrawal=Number(s.min_withdrawal);withdrawals=await api('/rest/v1/pilot_withdrawals?select=*&order=created_at.desc');
+ $('terms').textContent=`${s.accepting?'Pilot open':'Pilot paused'} · ${s.reward} MVXA per approved receipt · Withdraw from ${minWithdrawal} MVXA · Pilot limit: ${s.max_claims} receipts. Rewards accumulate here until a manual transfer is verified. Token market value can change.`;
+ $('submit-panel').hidden=reviewer||!s.accepting;$('claims-title').textContent=reviewer?'Receipt review queue':'My receipts';$('identity').textContent=session.user.email;$('app').hidden=false;$('login').hidden=true;
+ renderRewards();renderWithdrawals();
+ $('claims').innerHTML=rows.length?rows.map(c=>`<article class="card" data-id="${esc(c.id)}"><div class="row"><div><h2>${esc(c.provider)}</h2><p>${esc(labels[c.status])}</p><p>${esc(c.receipt_date)} · ${esc(c.receipt_number)}<br>${esc(c.amount)} ${esc(c.currency)}</p><p><strong>${esc(c.reward)} MVXA</strong> · ${c.status==='paid'?'Payment verified manually':'Not marked paid'}</p><p class="address">Recipient: ${esc(c.wallet)}</p><button data-action="image" class="secondary">View receipt</button></div><div><p class="address">Claim: ${esc(c.id)}</p>${c.note?`<p>${esc(c.note)}</p>`:''}${(c.signature||withdrawals.find(w=>w.id===c.withdrawal_id)?.signature)?`<p><a target="_blank" rel="noopener noreferrer" href="https://explorer.solana.com/tx/${encodeURIComponent(c.signature||withdrawals.find(w=>w.id===c.withdrawal_id)?.signature)}">View recorded transaction</a></p>`:''}${reviewer?actions(c):''}</div></div><details><summary>Claim history</summary><div class="events"></div><button data-action="history" class="secondary">Load history</button></details></article>`).join(''):'<p class="card">No claims yet.</p>';
 }
 function actions(c){
  if(['pending','needs_info'].includes(c.status))return '<label>Reviewer note<textarea data-note maxlength="500"></textarea></label><button data-action="approve">Approve reward</button><button data-action="ask" class="secondary">Request info</button><button data-action="reject" class="secondary">Reject</button>';
- if(c.status==='approved')return '<p>First reserve this claim for manual payout. Then send from the dedicated rewards wallet.</p><button data-action="prepare">Prepare manual payout</button>';
+ if(c.withdrawal_id)return '<p class="hint">Included in a withdrawal request. Manage the combined payment above.</p>';
+ if(c.status==='approved')return '<p class="hint">Added to the customer reward balance. Waiting for the customer to reach the threshold and request withdrawal.</p>';
  if(c.status==='payout_pending')return `<p>Reserved. Check this recipient, ${esc(c.reward)} MVXA and the mint before sending. Check the wallet history first if a previous attempt is uncertain. Do not send again just because the page was refreshed.</p><p class="address">Mint: ${MINT}</p><label>Signature of the transfer you already sent<input data-signature maxlength="88"></label><button data-action="record">Record transfer · not yet verified</button>`;
  if(c.status==='transfer_recorded')return '<p>Open the recorded transaction. Verify finalized status, successful execution, the MVXA mint, destination owner and exact token amount. A signature alone proves none of these.</p><label><input type="checkbox" data-verified> I checked the finalized MVXA transfer, mint, recipient and amount on Solana</label><button data-action="confirm">Confirm manually verified payment</button>';
  return '';
@@ -34,7 +39,7 @@ $('signin').onsubmit=e=>{e.preventDefault();const button=e.submitter,buttons=Arr
   $('password').value='';message('If registration is available for this email, check your inbox and spam folder for the confirmation link. After confirming, return here and sign in. If you already have an account, use Sign in.');
  }else{session=await api('/auth/v1/token?grant_type=password',credentials);$('password').value='';await load();message('Signed in.');}
  }catch(e){message(e.message);}finally{buttons.forEach(b=>b.disabled=false);}})();};
-$('logout').onclick=async()=>{try{await api('/auth/v1/logout',{});}catch{}session=null;claims=[];reviewer=false;clearReceipt();$('submit').reset();$('claims').innerHTML='';$('app').hidden=true;$('login').hidden=false;if(objectUrl)URL.revokeObjectURL(objectUrl);$('document').close();message('Signed out.');};
+$('logout').onclick=async()=>{try{await api('/auth/v1/logout',{});}catch{}session=null;claims=[];withdrawals=[];reviewer=false;$('rewards').innerHTML='';$('withdrawals').innerHTML='';clearReceipt();$('submit').reset();$('claims').innerHTML='';$('app').hidden=true;$('login').hidden=false;if(objectUrl)URL.revokeObjectURL(objectUrl);$('document').close();message('Signed out.');};
 $('refresh').onclick=e=>busy(e.target,async()=>{await load();message('Claims refreshed.');});
 $('close').onclick=()=>{ $('document').close();if(objectUrl)URL.revokeObjectURL(objectUrl);};
 $('submit').onsubmit=e=>{e.preventDefault();busy(e.submitter,async()=>{
@@ -118,3 +123,37 @@ async function readPilotReceipt(){
 }
 $('image').addEventListener('change',readPilotReceipt);
 receiptKeys.forEach(k=>$(k).addEventListener('input',receiptSummary));
+
+function units(value){return Math.round(Number(value)*1000);}
+function mvxa(value){return (value/1000).toLocaleString('en-GB',{maximumFractionDigits:3});}
+function rewardBalances(rows){
+ let available=0,pending=0,paid=0;const wallets=new Map();
+ for(const c of rows){const n=units(c.reward);
+  if(c.status==='paid')paid+=n;
+  else if(c.status==='approved'&&!c.withdrawal_id){available+=n;wallets.set(c.wallet,(wallets.get(c.wallet)||0)+n);}
+  else if((c.status==='approved'&&c.withdrawal_id)||['payout_pending','transfer_recorded'].includes(c.status))pending+=n;
+ }return {available,pending,paid,wallets};
+}
+function renderRewards(){
+ const b=rewardBalances(claims),open=withdrawals.some(w=>w.status!=='paid');
+ $('rewards').innerHTML=`<h2>${reviewer?'Pilot reward totals':'My rewards'}</h2><div class="balances"><div class="card">Available to request<strong>${mvxa(b.available)} MVXA</strong></div><div class="card">Payment in progress<strong>${mvxa(b.pending)} MVXA</strong></div><div class="card">Paid · manually verified<strong>${mvxa(b.paid)} MVXA</strong></div></div><p class="hint">Available rewards are recorded in this application; they are not yet in your wallet. Minimum withdrawal: ${esc(minWithdrawal)} MVXA per receiving wallet. Creating a token account for a new recipient may still require a one-time SOL deposit.</p>`;
+ if(!reviewer){$('rewards').innerHTML+=Array.from(b.wallets,([wallet,n])=>`<div class="card"><strong>${mvxa(n)} MVXA accrued</strong><p class="address">Receiving wallet: ${esc(wallet)}</p><p>${n<units(minWithdrawal)?mvxa(units(minWithdrawal)-n)+' MVXA more needed to request a transfer.':open?'You already have a withdrawal in progress.':'Ready to request a combined transfer.'}</p><button data-withdraw-wallet="${esc(wallet)}" ${n<units(minWithdrawal)||open?'disabled':''}>Request rewards</button></div>`).join('');}
+}
+function withdrawalActions(w){
+ if(w.status==='requested')return '<p>Reserve this request before making one manual transfer for the full amount.</p><button data-withdraw-action="prepare">Prepare manual payout</button>';
+ if(w.status==='payout_pending')return `<p>Check wallet history before sending. Send the exact combined amount only once.</p><p class="address">MVXA mint: ${MINT}</p><label>Signature of the transfer already sent<input data-signature maxlength="88"></label><button data-withdraw-action="record">Record transfer · not yet verified</button>`;
+ if(w.status==='transfer_recorded')return '<p>Verify the recorded transaction on Solana: finalized, successful, correct mint, recipient and full amount.</p><label><input type="checkbox" data-verified> I checked the finalized MVXA transfer, mint, recipient and amount on Solana</label><button data-withdraw-action="confirm">Confirm manually verified payment</button>';
+ return '';
+}
+function renderWithdrawals(){
+ const names={requested:'Withdrawal requested',payout_pending:'Manual payout reserved',transfer_recorded:'Transfer recorded · verification pending',paid:'Paid · manually verified'};
+ $('withdrawals').innerHTML='<h2>'+ (reviewer?'Withdrawal requests':'My withdrawals')+'</h2>'+ (withdrawals.length?withdrawals.map(w=>`<article class="card" data-withdraw-id="${esc(w.id)}"><h3>${esc(w.amount)} MVXA · ${names[w.status]}</h3><p class="address">Recipient: ${esc(w.wallet)}</p><p class="hint">${claims.filter(c=>c.withdrawal_id===w.id).length} approved receipts · ${esc(new Date(w.created_at).toLocaleString())}</p>${w.signature?`<p><a target="_blank" rel="noopener noreferrer" href="https://explorer.solana.com/tx/${encodeURIComponent(w.signature)}">View recorded transaction</a></p>`:''}${reviewer?withdrawalActions(w):'<p class="hint">The pilot team processes this request manually. Refresh to see updates.</p>'}</article>`).join(''):'<p class="hint">No withdrawal requests yet.</p>');
+}
+$('rewards').onclick=e=>{const button=e.target.closest('button[data-withdraw-wallet]');if(!button||button.disabled)return;busy(button,async()=>{
+ await api('/rest/v1/rpc/pilot_request_withdrawal',{p_wallet:button.dataset.withdrawWallet});await load();message('Withdrawal requested. The amount is reserved; no tokens have been sent.');
+ });};
+$('withdrawals').onclick=e=>{const button=e.target.closest('button[data-withdraw-action]');if(!button)return;busy(button,async()=>{
+ const article=button.closest('[data-withdraw-id]'),action=button.dataset.withdrawAction;let note='';
+ if(action==='confirm'){if(!article.querySelector('[data-verified]')?.checked)throw Error('Verify the actual transfer before confirming.');note='I checked the finalized MVXA transfer, mint, recipient and amount on Solana';}
+ await api('/rest/v1/rpc/pilot_review_withdrawal',{p_id:article.dataset.withdrawId,p_action:action,p_signature:article.querySelector('[data-signature]')?.value.trim()||null,p_note:note});await load();message('Withdrawal updated. This application did not send a transaction.');
+ });};
