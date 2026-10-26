@@ -25,7 +25,14 @@ function actions(c){
  return '';
 }
 async function busy(button,work){button.disabled=true;try{await work();}catch(e){message(e.message);}finally{button.disabled=false;}}
-$('signin').onsubmit=e=>{e.preventDefault();busy(e.submitter,async()=>{session=await api('/auth/v1/token?grant_type=password',{email:$('email').value.trim(),password:$('password').value});$('password').value='';await load();message('Signed in.');});};
+$('signin').onsubmit=e=>{e.preventDefault();const button=e.submitter,buttons=Array.from($('signin').querySelectorAll('button'));if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);(async()=>{try{
+ const credentials={email:$('email').value.trim(),password:$('password').value};
+ if(button?.value==='signup'){
+  if(credentials.password.length<8)throw Error('Use at least 8 characters for a new password.');
+  await api('/auth/v1/signup?redirect_to='+encodeURIComponent('https://milvexa.xyz/charge/pilot/'),credentials);
+  $('password').value='';message('If registration is available for this email, check your inbox and spam folder for the confirmation link. After confirming, return here and sign in. If you already have an account, use Sign in.');
+ }else{session=await api('/auth/v1/token?grant_type=password',credentials);$('password').value='';await load();message('Signed in.');}
+ }catch(e){message(e.message);}finally{buttons.forEach(b=>b.disabled=false);}})();};
 $('logout').onclick=async()=>{try{await api('/auth/v1/logout',{});}catch{}session=null;claims=[];reviewer=false;$('claims').innerHTML='';$('app').hidden=true;$('login').hidden=false;if(objectUrl)URL.revokeObjectURL(objectUrl);$('document').close();message('Signed out.');};
 $('refresh').onclick=e=>busy(e.target,async()=>{await load();message('Claims refreshed.');});
 $('close').onclick=()=>{ $('document').close();if(objectUrl)URL.revokeObjectURL(objectUrl);};
@@ -50,3 +57,12 @@ $('claims').onclick=e=>{const button=e.target.closest('button[data-action]');if(
  });};
 $('date').max=new Date().toISOString().slice(0,10);
 if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(cfg.url)||!cfg.key){message('Pilot setup is not connected yet. Existing receipt demo is still available.');$('signin').querySelector('button').disabled=true;}
+
+// Confirmation links may contain auth fragments. Do not persist or display their tokens.
+if(typeof location!=='undefined' && typeof history!=='undefined'){
+ const confirmation=new URLSearchParams(location.hash.slice(1));
+ if(confirmation.has('access_token')||confirmation.has('error')||confirmation.has('error_description')){
+  history.replaceState(null,'',location.pathname+location.search);
+  message(confirmation.has('error')?'This confirmation link could not be used. It may have expired. Try signing in if you already confirmed your email.':'Email confirmation completed. Sign in with your email and password.');
+ }
+}
