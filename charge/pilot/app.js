@@ -7,7 +7,7 @@ function message(s){$('message').textContent=s;}
 async function api(path,body,method){
  const response=await fetch(cfg.url+path,{method:method||(body?'POST':'GET'),headers:{apikey:cfg.key,...(session?.access_token?{Authorization:'Bearer '+session.access_token}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const data=await response.json().catch(()=>null);
- if(!response.ok){if(response.status===401)message('Your session expired. Sign out and sign in again.');throw Error(data?.message||data?.error_description||data?.error||'Request failed');}return data;
+ if(!response.ok){if(response.status===401)message('Your session expired. Sign out and sign in again.');throw Error(data?.message||data?.error_description||data?.msg||data?.error||('Request failed (HTTP '+response.status+')'));}return data;
 }
 function validWallet(s){if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s))return false;const alphabet='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';let n=0n;for(const c of s)n=n*58n+BigInt(alphabet.indexOf(c));let bytes=0;while(n){bytes++;n>>=8n;}return bytes+s.match(/^1*/)[0].length===32;}
 async function load(){
@@ -25,6 +25,7 @@ function actions(c){
  return '';
 }
 async function busy(button,work){button.disabled=true;try{await work();}catch(e){message(e.message);}finally{button.disabled=false;}}
+$('submit').addEventListener('invalid',()=>{$('receipt-fields').open=true;},true);
 $('signin').onsubmit=e=>{e.preventDefault();const button=e.submitter,buttons=Array.from($('signin').querySelectorAll('button'));if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);(async()=>{try{
  const credentials={email:$('email').value.trim(),password:$('password').value};
  if(button?.value==='signup'){
@@ -33,18 +34,18 @@ $('signin').onsubmit=e=>{e.preventDefault();const button=e.submitter,buttons=Arr
   $('password').value='';message('If registration is available for this email, check your inbox and spam folder for the confirmation link. After confirming, return here and sign in. If you already have an account, use Sign in.');
  }else{session=await api('/auth/v1/token?grant_type=password',credentials);$('password').value='';await load();message('Signed in.');}
  }catch(e){message(e.message);}finally{buttons.forEach(b=>b.disabled=false);}})();};
-$('logout').onclick=async()=>{try{await api('/auth/v1/logout',{});}catch{}session=null;claims=[];reviewer=false;$('claims').innerHTML='';$('app').hidden=true;$('login').hidden=false;if(objectUrl)URL.revokeObjectURL(objectUrl);$('document').close();message('Signed out.');};
+$('logout').onclick=async()=>{try{await api('/auth/v1/logout',{});}catch{}session=null;claims=[];reviewer=false;clearReceipt();$('submit').reset();$('claims').innerHTML='';$('app').hidden=true;$('login').hidden=false;if(objectUrl)URL.revokeObjectURL(objectUrl);$('document').close();message('Signed out.');};
 $('refresh').onclick=e=>busy(e.target,async()=>{await load();message('Claims refreshed.');});
 $('close').onclick=()=>{ $('document').close();if(objectUrl)URL.revokeObjectURL(objectUrl);};
 $('submit').onsubmit=e=>{e.preventDefault();busy(e.submitter,async()=>{
- const file=$('image').files[0],wallet=$('wallet').value.trim();if(!validWallet(wallet))throw Error('Enter a valid public Solana address.');
+ if(ocrBusy)throw Error('Wait for the receipt to finish reading.');if(!receiptReady)throw Error('Choose and check a receipt image first.');const file=$('image').files[0],wallet=$('wallet').value.trim();if(!validWallet(wallet))throw Error('Enter a valid public Solana address.');
  if(!file||!['image/jpeg','image/png','image/webp'].includes(file.type)||!file.size||file.size>5242880)throw Error('Choose a JPG, PNG or WEBP image up to 5 MB.');
  const id=crypto.randomUUID(),path=session.user.id+'/'+id,hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');
  const response=await fetch(cfg.url+'/storage/v1/object/pilot-receipts/'+path,{method:'POST',headers:{apikey:cfg.key,Authorization:'Bearer '+session.access_token,'Content-Type':file.type,'x-upsert':'false'},body:file});
  if(!response.ok)throw Error('Image upload failed. Sign in again or check that the pilot is open.');
  try{await api('/rest/v1/rpc/pilot_submit',{p_id:id,p_provider:$('provider').value.trim(),p_receipt:$('receipt').value.trim(),p_date:$('date').value,p_amount:Number($('amount').value),p_currency:$('currency').value,p_wallet:wallet,p_path:path,p_hash:hash});}
  catch(err){throw Error(err.message+' If the request timed out, refresh claims before trying again. An uploaded image may remain for the administrator to remove.');}
- $('submit').reset();await load();message('Receipt received by the pilot team. No payment has been sent.');
+ $('submit').reset();clearReceipt();await load();message('Receipt received by the pilot team. No payment has been sent.');
  });};
 $('claims').onclick=e=>{const button=e.target.closest('button[data-action]');if(!button)return;busy(button,async()=>{
  const article=button.closest('article'),c=claims.find(x=>x.id===article.dataset.id),action=button.dataset.action;if(!c)throw Error('Refresh claims first.');
@@ -66,3 +67,54 @@ if(typeof location!=='undefined' && typeof history!=='undefined'){
   message(confirmation.has('error')?'This confirmation link could not be used. It may have expired. Try signing in if you already confirmed your email.':'Email confirmation completed. Sign in with your email and password.');
  }
 }
+
+function parseReceipt(text){const r={operator:'',receipt:'',date:'',kwh:'',amount:'',currency:''},t=text.replace(/\r/g,'');for(const [re,n]of [[/eldrive/i,'Eldrive'],[/fines|финес/i,'Fines Charging'],[/electrip/i,'electrip'],[/evpoint/i,'EVPoint'],[/demo charge|демо заряд/i,'Demo Charge']])if(re.test(t)){r.operator=n;break}const number=n=>n.replace(/\s/g,'').replace(',','.');let m=t.match(/(\d+(?:[.,]\d+)?)\s*(?:kwh|kW\s*h|квт\.?\s*ч)/i);if(m)r.kwh=number(m[1]);m=t.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);let y,mo,d;if(m)[,y,mo,d]=m;else{m=t.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);if(m)[,d,mo,y]=m}if(y){const dt=new Date(Date.UTC(+y,+mo-1,+d));if(dt.getUTCFullYear()===+y&&dt.getUTCMonth()===+mo-1&&dt.getUTCDate()===+d)r.date=`${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`}for(const l of t.split('\n').filter(l=>/total|amount paid|общ[ао].*сума|сума за плащане|платено/i.test(l))){const currency=/EUR|€|евро/i.test(l)?'EUR':/BGN|лв/i.test(l)?'BGN':'';if(!currency)continue;const nums=l.match(/\d+[.,]\d{2}\b/g);if(nums){r.amount=number(nums[nums.length-1]);r.currency=currency;break}}m=t.match(/(?:receipt|invoice|session|document|фактура|документ|сесия)\s*(?:no\.?|number|номер|№|#|id)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})/i);if(m)r.receipt=m[1];else{m=t.match(/^\s*(\d{5,12})\s+\d{1,2}[-/.]\d{1,2}[-/.]20\d{2}/m);if(m)r.receipt=m[1]}return r}
+
+let ocrBusy=false,receiptReady=false,ocrVersion=0,ocrWorker=null,receiptPreviewUrl=null,ocrLibrary;
+const receiptKeys=['provider','receipt','date','amount','currency'];
+function receiptSummary(){
+ const missing=receiptKeys.filter(k=>!$(k).value);
+ $('receipt-summary').textContent=[$('provider').value||'Provider not detected',$('receipt').value?'Receipt '+$('receipt').value:'Receipt number not detected',$('date').value||'Date not detected',$('amount').value?$('amount').value+' '+($('currency').value||'?'):'Amount not detected'].join(' · ');
+ $('receipt-summary').hidden=false;
+ return missing;
+}
+function clearReceipt(){
+ ocrVersion++;receiptReady=false;ocrBusy=false;
+ if(ocrWorker){ocrWorker.terminate().catch(()=>{});ocrWorker=null;}
+ if(receiptPreviewUrl){URL.revokeObjectURL(receiptPreviewUrl);receiptPreviewUrl=null;}
+ receiptKeys.forEach(k=>$(k).value='');$('receipt-fields').hidden=true;$('receipt-fields').open=false;
+ $('receipt-preview').hidden=true;$('receipt-summary').hidden=true;$('send-claim').disabled=true;
+ $('ocr-status').textContent='Choose an image to read its details automatically.';
+}
+function loadReceiptOCR(){
+ if(window.Tesseract)return Promise.resolve(window.Tesseract);
+ if(!ocrLibrary)ocrLibrary=new Promise((resolve,reject)=>{
+  const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+  script.onload=()=>resolve(window.Tesseract);script.onerror=()=>{script.remove();ocrLibrary=null;reject(Error('Text recognition could not load.'));};document.head.appendChild(script);
+ });return ocrLibrary;
+}
+async function readPilotReceipt(){
+ clearReceipt();const file=$('image').files[0],version=ocrVersion;
+ if(!file)return;
+ if(!['image/jpeg','image/png','image/webp'].includes(file.type)||!file.size||file.size>5242880){$('ocr-status').textContent='Choose a JPG, PNG or WEBP image up to 5 MB.';return;}
+ receiptPreviewUrl=URL.createObjectURL(file);$('receipt-preview').src=receiptPreviewUrl;$('receipt-preview').hidden=false;
+ ocrBusy=true;$('ocr-status').textContent='Reading receipt… the first scan may take longer while language files download.';
+ let worker;
+ try{
+  const library=await loadReceiptOCR();if(version!==ocrVersion)return;
+  worker=await library.createWorker('eng+bul',1,{logger:m=>{if(version===ocrVersion&&m.status==='recognizing text')$('ocr-status').textContent='Reading receipt… '+Math.round(m.progress*100)+'%';}});
+  if(version!==ocrVersion)return;ocrWorker=worker;
+  const result=await worker.recognize(file);if(version!==ocrVersion)return;
+  const r=parseReceipt(result.data.text);$('provider').value=r.operator;$('receipt').value=r.receipt;$('date').value=r.date;$('amount').value=r.amount;$('currency').value=r.currency;
+  const missing=receiptSummary();$('receipt-fields').open=missing.length>0;
+  $('ocr-status').textContent=missing.length?'Some details were not detected. Fill in the missing fields below.':'Receipt read. Check the summary and add your wallet address. You can correct details if needed.';
+ }catch{
+  if(version!==ocrVersion)return;
+  $('ocr-status').textContent='We could not read this image. Try a clearer photo or fill in the receipt details below.';$('receipt-fields').open=true;receiptSummary();
+ }finally{
+  if(worker){await worker.terminate().catch(()=>{});if(ocrWorker===worker)ocrWorker=null;}
+  if(version===ocrVersion){ocrBusy=false;receiptReady=true;$('receipt-fields').hidden=false;$('send-claim').disabled=false;}
+ }
+}
+$('image').addEventListener('change',readPilotReceipt);
+receiptKeys.forEach(k=>$(k).addEventListener('input',receiptSummary));
