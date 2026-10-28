@@ -3,7 +3,22 @@ const $=id=>document.getElementById(id),cfg=window.MILVEXA_PILOT||{},MINT='HFieY
 let session=null,reviewer=false,claims=[],withdrawals=[],minWithdrawal=300,accumulationReady=false,objectUrl;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const labels={pending:'Awaiting review',needs_info:'More information needed — contact the pilot team',rejected:'Rejected',approved:'Approved · reward accrued',payout_pending:'Payout reserved · manual transfer pending',transfer_recorded:'Transfer recorded · verification pending',paid:'Paid · transfer verified'};
-function message(s){$('message').textContent=s;}
+function message(s,target){
+ const inline=target?.querySelector?.('.form-message');
+ if(inline){$('message').textContent='';inline.textContent=s;}
+ else $('message').textContent=s;
+}
+for(const id of ['signin','submit']){
+ const form=$(id),feedback=$(id+'-message');
+ form.addEventListener('invalid',e=>{
+  if(id==='submit'){$('receipt-fields').hidden=false;$('receipt-fields').open=true;}
+  if(e.target!==form.querySelector('input:invalid,select:invalid,textarea:invalid'))return;
+  const label=e.target.closest('label')?.textContent.trim()||'This field';
+  message(label+': '+e.target.validationMessage,form);
+ },true);
+ form.addEventListener('input',()=>{feedback.textContent='';});
+}
+
 async function api(path,body,method){
  const response=await fetch(cfg.url+path,{method:method||(body?'POST':'GET'),headers:{apikey:cfg.key,...(session?.access_token?{Authorization:'Bearer '+session.access_token}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const data=await response.json().catch(()=>null);
@@ -29,16 +44,16 @@ function actions(c){
  if(c.status==='transfer_recorded')return '<p>Open the recorded transaction. Verify finalized status, successful execution, the MVXA mint, destination owner and exact token amount. A signature alone proves none of these.</p><label><input type="checkbox" data-verified> I checked the finalized MVXA transfer, mint, recipient and amount on Solana</label><button data-action="confirm">Confirm manually verified payment</button>';
  return '';
 }
-async function busy(button,work){button.disabled=true;try{await work();}catch(e){message(e.message);}finally{button.disabled=false;}}
+async function busy(button,work){const form=button.closest('form');if(form)message('',form);button.disabled=true;try{await work();}catch(e){message(e.message,form);}finally{button.disabled=false;}}
 $('submit').addEventListener('invalid',()=>{$('receipt-fields').open=true;},true);
-$('signin').onsubmit=e=>{e.preventDefault();const button=e.submitter,buttons=Array.from($('signin').querySelectorAll('button'));if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);(async()=>{try{
+$('signin').onsubmit=e=>{e.preventDefault();const button=e.submitter,buttons=Array.from($('signin').querySelectorAll('button'));if(buttons.some(b=>b.disabled))return;buttons.forEach(b=>b.disabled=true);message('',$('signin'));(async()=>{try{
  const credentials={email:$('email').value.trim(),password:$('password').value};
  if(button?.value==='signup'){
   if(credentials.password.length<8)throw Error('Use at least 8 characters for a new password.');
   await api('/auth/v1/signup?redirect_to='+encodeURIComponent('https://milvexa.xyz/charge/pilot/'),credentials);
-  $('password').value='';message('If registration is available for this email, check your inbox and spam folder for the confirmation link. After confirming, return here and sign in. If you already have an account, use Sign in.');
+  $('password').value='';message('If registration is available for this email, check your inbox and spam folder for the confirmation link. After confirming, return here and sign in. If you already have an account, use Sign in.',$('signin'));
  }else{session=await api('/auth/v1/token?grant_type=password',credentials);$('password').value='';await load();message('Signed in.');}
- }catch(e){message(e.message);}finally{buttons.forEach(b=>b.disabled=false);}})();};
+ }catch(e){message(e.message,$('signin'));}finally{buttons.forEach(b=>b.disabled=false);}})();};
 $('logout').onclick=async()=>{try{await api('/auth/v1/logout',{});}catch{}session=null;claims=[];withdrawals=[];reviewer=false;$('rewards').innerHTML='';$('withdrawals').innerHTML='';clearReceipt();$('submit').reset();$('claims').innerHTML='';$('app').hidden=true;$('login').hidden=false;if(objectUrl)URL.revokeObjectURL(objectUrl);$('document').close();message('Signed out.');};
 $('refresh').onclick=e=>busy(e.target,async()=>{await load();message('Claims refreshed.');});
 $('close').onclick=()=>{ $('document').close();if(objectUrl)URL.revokeObjectURL(objectUrl);};
@@ -50,7 +65,7 @@ $('submit').onsubmit=e=>{e.preventDefault();busy(e.submitter,async()=>{
  if(!response.ok)throw Error('Image upload failed. Sign in again or check that the pilot is open.');
  try{await api('/rest/v1/rpc/pilot_submit',{p_id:id,p_provider:$('provider').value.trim(),p_receipt:$('receipt').value.trim(),p_date:$('date').value,p_amount:Number($('amount').value),p_currency:$('currency').value,p_wallet:wallet,p_path:path,p_hash:hash});}
  catch(err){throw Error(err.message+' If the request timed out, refresh claims before trying again. An uploaded image may remain for the administrator to remove.');}
- $('submit').reset();clearReceipt();await load();message('Receipt received by the pilot team. No payment has been sent.');
+ $('submit').reset();clearReceipt();await load();message('Receipt received by the pilot team. No payment has been sent.',$('submit'));
  });};
 $('claims').onclick=e=>{const button=e.target.closest('button[data-action]');if(!button)return;busy(button,async()=>{
  const article=button.closest('article'),c=claims.find(x=>x.id===article.dataset.id),action=button.dataset.action;if(!c)throw Error('Refresh claims first.');
