@@ -58,7 +58,7 @@ $('logout').onclick=async()=>{try{await api('/auth/v1/logout',{});}catch{}sessio
 $('refresh').onclick=e=>busy(e.target,async()=>{await load();message('Claims refreshed.');});
 $('close').onclick=()=>{ $('document').close();if(objectUrl)URL.revokeObjectURL(objectUrl);};
 $('submit').onsubmit=e=>{e.preventDefault();busy(e.submitter,async()=>{
- if(ocrBusy)throw Error('Wait for the receipt to finish reading.');if(!receiptReady)throw Error('Choose and check a receipt image first.');const file=$('image').files[0],wallet=$('wallet').value.trim();if(!validWallet(wallet))throw Error('Enter a valid public Solana address.');
+ if(ocrBusy)throw Error('Wait for the receipt to finish reading.');if(!receiptReady)throw Error('Choose and check a receipt image first.');const file=receiptUploadFile,wallet=$('wallet').value.trim();if(!validWallet(wallet))throw Error('Enter a valid public Solana address.');
  if(!file||!['image/jpeg','image/png','image/webp'].includes(file.type)||!file.size||file.size>5242880)throw Error('Choose a JPG, PNG or WEBP image up to 5 MB.');
  const id=crypto.randomUUID(),path=session.user.id+'/'+id,hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');
  const response=await fetch(cfg.url+'/storage/v1/object/pilot-receipts/'+path,{method:'POST',headers:{apikey:cfg.key,Authorization:'Bearer '+session.access_token,'Content-Type':file.type,'x-upsert':'false'},body:file});
@@ -90,7 +90,7 @@ if(typeof location!=='undefined' && typeof history!=='undefined'){
 
 function parseReceipt(text){
  const r={operator:'',receipt:'',date:'',kwh:'',amount:'',currency:''},t=String(text).replace(/\r/g,'');
- const providers=[[/eldrive/i,'Eldrive'],[/fines|финес/i,'Fines Charging'],[/electrip/i,'electrip'],[/evpoint/i,'EVPoint'],[/demo charge|демо заряд/i,'Demo Charge'],[/chargepoint/i,'ChargePoint'],[/electrify america/i,'Electrify America'],[/\btesla\b/i,'Tesla'],[/\bionity\b/i,'IONITY'],[/\bevgo\b/i,'EVgo'],[/bp\s*pulse/i,'bp pulse'],[/shell recharge/i,'Shell Recharge']];
+ const providers=[[/eldrive|елдрайв/i,'Eldrive'],[/fines|финес/i,'Fines Charging'],[/electrip/i,'electrip'],[/evpoint/i,'EVPoint'],[/demo charge|демо заряд/i,'Demo Charge'],[/chargepoint/i,'ChargePoint'],[/electrify america/i,'Electrify America'],[/\btesla\b/i,'Tesla'],[/\bionity\b/i,'IONITY'],[/\bevgo\b/i,'EVgo'],[/bp\s*pulse/i,'bp pulse'],[/shell recharge/i,'Shell Recharge']];
  for(const [re,name] of providers)if(re.test(t)){r.operator=name;break;}
  const currencyOf=s=>{const found=[];for(const [re,c] of [[/\bEUR\b|€|евро/i,'EUR'],[/\bBGN\b|лв\.?/i,'BGN'],[/\bUSD\b|US\s*\$/i,'USD'],[/\bGBP\b|£/i,'GBP']])if(re.test(s))found.push(c);return found.length===1?found[0]:'';};
  const number=s=>{let n=s.replace(/[\s\u00a0\u202f]/g,'');if(n.includes(',')&&n.includes('.')){const decimal=n.lastIndexOf(',')>n.lastIndexOf('.')?',':'.';n=n.replace(decimal===','?/\./g:/,/g,'').replace(',','.');}else n=n.replace(',','.');return n;};
@@ -109,16 +109,16 @@ function parseReceipt(text){
    else{m=t.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+('+monthNames+')\\.?[,]?\\s+(20\\d{2})\\b','i'));if(m)r.date=date(m[3],months.indexOf(m[2].slice(0,3).toLowerCase())+1,m[1]);}
   }
  }
- const totals=t.split('\n').filter(l=>/\btotal\b|amount paid|amount charged|общ[ао].*сума|сума за плащане|платено/i.test(l)&&!/\bsub\s*total\b|\bsubtotal\b|\btotal\s+(?:tax|vat|energy|kwh)\b/i.test(l));
- for(const line of totals){if(/refund|credit note|възстанов|(?:^|\s)-\s*[$€£]?\s*\d/i.test(line))continue;const values=line.match(/(?:\d{1,3}(?:[,.\s\u00a0\u202f]\d{3})+|\d+)[.,]\d{2}\b/g);if(!values)continue;const n=number(values[values.length-1]);if(!Number.isFinite(+n)||+n<=0)continue;r.amount=n;r.currency=currencyOf(line)||currencyOf(t);break;}
+ const totals=t.split('\n').filter(l=>/\btotal\b|amount paid|amount charged|общ[ао].*сума|сума за плащане|платено|общо\s+(?:за\s+плащане|с\s+ддс|за\s+услуги)/i.test(l)&&!/\bsub\s*total\b|\bsubtotal\b|\btotal\s+(?:tax|vat|energy|kwh)\b/i.test(l));
+ for(const line of totals){if(/refund|credit note|възстанов|(?:^|\s)-\s*[$€£]?\s*\d/i.test(line))continue;const euro=line.match(/€\s*(\d+(?:[.,]\d{2}))\b|\b(\d+(?:[.,]\d{2}))\s*(?:EUR|евро)\b/i);if(euro){const n=number(euro[1]||euro[2]);if(Number.isFinite(+n)&&+n>0){r.amount=n;r.currency='EUR';break;}}const values=line.match(/(?:\d{1,3}(?:[,.\s\u00a0\u202f]\d{3})+|\d+)[.,]\d{2}\b/g);if(!values)continue;const n=number(values[values.length-1]);if(!Number.isFinite(+n)||+n<=0)continue;r.amount=n;r.currency=currencyOf(line)||currencyOf(t);break;}
  // A bare dollar symbol is ambiguous (USD/CAD/AUD/etc.); require an explicit currency selection.
- m=t.match(/(?:receipt|invoice|session|document|фактура|документ|сесия)\s*(?:no\.?|number|номер|№|#|id)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})/i);
+ m=t.match(/(?:receipt|invoice|session|document|фактура|документ|сесия|разписка)\s*(?:no\.?|number|номер|№|#|id)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})/i);
  if(m&&/\d/.test(m[1]))r.receipt=m[1];else{m=t.match(/^\s*(\d{5,12})\s+\d{1,2}[-/.]\d{1,2}[-/.]20\d{2}/m);if(m)r.receipt=m[1];}
  return r;
 }
 
 
-let ocrBusy=false,receiptReady=false,ocrVersion=0,ocrWorker=null,receiptPreviewUrl=null,ocrLibrary;
+let receiptUploadFile=null,ocrBusy=false,receiptReady=false,ocrVersion=0,ocrWorker=null,receiptPreviewUrl=null,ocrLibrary;
 const receiptKeys=['provider','receipt','date','amount','currency'];
 function receiptSummary(){
  const missing=receiptKeys.filter(k=>!$(k).value);
@@ -127,12 +127,12 @@ function receiptSummary(){
  return missing;
 }
 function clearReceipt(){
- ocrVersion++;receiptReady=false;ocrBusy=false;
+ ocrVersion++;receiptReady=false;ocrBusy=false;receiptUploadFile=null;
  if(ocrWorker){ocrWorker.terminate().catch(()=>{});ocrWorker=null;}
  if(receiptPreviewUrl){URL.revokeObjectURL(receiptPreviewUrl);receiptPreviewUrl=null;}
  receiptKeys.forEach(k=>$(k).value='');$('receipt-fields').hidden=true;$('receipt-fields').open=false;
  $('receipt-preview').hidden=true;$('receipt-summary').hidden=true;$('send-claim').disabled=true;
- $('ocr-status').textContent='Choose an image to read its details automatically.';
+ $('ocr-status').textContent='Choose a PDF or image to read its details automatically.';
 }
 function loadReceiptOCR(){
  if(window.Tesseract)return Promise.resolve(window.Tesseract);
@@ -142,26 +142,33 @@ function loadReceiptOCR(){
  });return ocrLibrary;
 }
 async function readPilotReceipt(){
- clearReceipt();const file=$('image').files[0],version=ocrVersion;
- if(!file)return;
- if(!['image/jpeg','image/png','image/webp'].includes(file.type)||!file.size||file.size>5242880){$('ocr-status').textContent='Choose a JPG, PNG or WEBP image up to 5 MB.';return;}
- receiptPreviewUrl=URL.createObjectURL(file);$('receipt-preview').src=receiptPreviewUrl;$('receipt-preview').hidden=false;
- ocrBusy=true;$('ocr-status').textContent='Reading receipt… the first scan may take longer while language files download.';
- let worker;
+ clearReceipt();const original=$('image').files[0],version=ocrVersion;
+ if(!original)return;
+ const isPDF=original.type==='application/pdf'||(/\.pdf$/i.test(original.name)&&!original.type);
+ if(!['image/jpeg','image/png','image/webp'].includes(original.type)&&!isPDF||!original.size||original.size>5242880){$('ocr-status').textContent='Choose a PDF, JPG, PNG or WEBP up to 5 MB.';return;}
+ ocrBusy=true;$('ocr-status').textContent=isPDF?'Reading PDF locally…':'Reading receipt… the first scan may take longer while language files download.';
+ let worker,prepared=!isPDF?original:null,text='',pdfNote='';
  try{
-  const library=await loadReceiptOCR();if(version!==ocrVersion)return;
-  worker=await library.createWorker('eng+bul',1,{logger:m=>{if(version===ocrVersion&&m.status==='recognizing text')$('ocr-status').textContent='Reading receipt… '+Math.round(m.progress*100)+'%';}});
-  if(version!==ocrVersion)return;ocrWorker=worker;
-  const result=await worker.recognize(file);if(version!==ocrVersion)return;
-  const r=parseReceipt(result.data.text);$('provider').value=r.operator;$('receipt').value=r.receipt;$('date').value=r.date;$('amount').value=r.amount;$('currency').value=r.currency;
-  const missing=receiptSummary();$('receipt-fields').open=missing.length>0;
-  $('ocr-status').textContent=missing.length?'Some details were not detected. Fill in the missing fields below.':'Receipt read. Check the summary and add your wallet address. You can correct details if needed.';
- }catch{
+  if(isPDF){const result=await window.readPilotPDF(original);if(version!==ocrVersion)return;prepared=result.file;text=result.text;pdfNote=`PDF: ${result.pages} page(s), converted to one receipt image for review. `;}
   if(version!==ocrVersion)return;
-  $('ocr-status').textContent='We could not read this image. Try a clearer photo or fill in the receipt details below.';$('receipt-fields').open=true;receiptSummary();
+  receiptPreviewUrl=URL.createObjectURL(prepared);$('receipt-preview').src=receiptPreviewUrl;$('receipt-preview').hidden=false;
+  // Use embedded PDF text first. Scanned PDFs and photos still use OCR locally.
+  if(text.trim().length<30){
+   const library=await loadReceiptOCR();if(version!==ocrVersion)return;
+   worker=await library.createWorker('eng+bul',1,{logger:m=>{if(version===ocrVersion&&m.status==='recognizing text')$('ocr-status').textContent='Reading receipt… '+Math.round(m.progress*100)+'%';}});
+   if(version!==ocrVersion)return;ocrWorker=worker;
+   const result=await worker.recognize(prepared);if(version!==ocrVersion)return;text=result.data.text;
+  }
+  const r=parseReceipt(text);$('provider').value=r.operator;$('receipt').value=r.receipt;$('date').value=r.date;$('amount').value=r.amount;$('currency').value=r.currency;
+  const missing=receiptSummary();$('receipt-fields').open=missing.length>0;
+  $('ocr-status').textContent=pdfNote+(missing.length?'Some details were not detected. Check the summary and correct the missing fields below.':'Receipt read. Check the summary and add your wallet address. You can correct details if needed.');
+ }catch(e){
+  if(version!==ocrVersion)return;
+  $('ocr-status').textContent=prepared?'We could not read all details. Check the image and fill in the receipt details below.':(e.message||'This PDF could not be read. Try an unprotected PDF or a clear receipt image.');
+  if(prepared){$('receipt-fields').open=true;receiptSummary();}
  }finally{
   if(worker){await worker.terminate().catch(()=>{});if(ocrWorker===worker)ocrWorker=null;}
-  if(version===ocrVersion){ocrBusy=false;receiptReady=true;$('receipt-fields').hidden=false;$('send-claim').disabled=false;}
+  if(version===ocrVersion){ocrBusy=false;receiptUploadFile=prepared;receiptReady=!!prepared;$('receipt-fields').hidden=!prepared;$('send-claim').disabled=!prepared;}
  }
 }
 $('image').addEventListener('change',readPilotReceipt);
