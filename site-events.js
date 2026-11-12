@@ -1,20 +1,6 @@
 (function () {
   "use strict";
 
-  const tagId = "G-GCQMGDYCH6";
-
-  window.dataLayer = window.dataLayer || [];
-  window.gtag = window.gtag || function () {
-    window.dataLayer.push(arguments);
-  };
-  window.gtag("js", new Date());
-  window.gtag("config", tagId);
-
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(tagId);
-  document.head.appendChild(script);
-
   function trackCallToAction(event) {
     if (typeof window.gtag !== "function") return;
     const target = event.target instanceof Element ? event.target : event.target && event.target.parentElement;
